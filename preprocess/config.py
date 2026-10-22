@@ -69,6 +69,13 @@ class SemanticConfig:
     sam_pred_iou_thresh: float = 0.7
     sam_stability_score_thresh: float = 0.85
 
+    # ── Grounding DINO configuration ─────────────────────────────────
+    use_grounding_dino: bool = False
+    grounding_dino_config: Optional[str] = None
+    grounding_dino_checkpoint: Optional[str] = None
+    grounding_box_threshold: float = 0.35
+    grounding_text_threshold: float = 0.25
+
     # ── CLIP configuration ───────────────────────────────────────────
     clip_model_name: str = "ViT-B-32"
     clip_pretrained: str = "openai"
@@ -150,4 +157,7 @@ class SemanticConfig:
             "max_masks_per_frame": self.max_masks_per_frame,
             "image_size": self.image_size,
             "save_float16": self.save_float16,
+            "use_grounding_dino": self.use_grounding_dino,
+            "grounding_box_threshold": self.grounding_box_threshold,
+            "grounding_text_threshold": self.grounding_text_threshold,
         }

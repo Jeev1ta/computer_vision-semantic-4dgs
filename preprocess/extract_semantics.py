@@ -204,19 +204,47 @@ class SemanticExtractor:
     # ─────────────────────────────────────────────────────────────────
 
     def _generate_masks(self, image_np: np.ndarray) -> List[Dict]:
-        """Run SAM 2 automatic mask generation on a single image.
+        """Run mask generation on a single image via SAM 2 (or Grounding DINO + SAM 2).
 
         Args:
             image_np: RGB image as numpy array, shape (H, W, 3), uint8.
 
         Returns:
-            List of mask dictionaries, each containing:
-                - segmentation: binary mask (H, W) bool
-                - area: mask area in pixels
-                - bbox: [x, y, w, h] bounding box
-                - predicted_iou: model's IoU prediction
-                - stability_score: mask stability score
+            List of mask dictionaries with segmentation, area, bbox, predicted_iou.
         """
+        if getattr(self.config, 'use_grounding_dino', False):
+            from preprocess.grounding_dino_sam import GroundingDINODetector, segment_with_grounding_dino_and_sam2
+            if not hasattr(self, '_grounding_detector'):
+                self._grounding_detector = GroundingDINODetector(
+                    config_path=self.config.grounding_dino_config,
+                    checkpoint_path=self.config.grounding_dino_checkpoint,
+                    box_threshold=self.config.grounding_box_threshold,
+                    text_threshold=self.config.grounding_text_threshold,
+                    device=self.config.device,
+                )
+            # Create SAM2 predictor if needed
+            if not hasattr(self, '_sam_predictor'):
+                try:
+                    from sam2.sam2_image_predictor import SAM2ImagePredictor
+                    self._sam_predictor = SAM2ImagePredictor(self.sam_model)
+                except Exception:
+                    self._sam_predictor = None
+
+            if self._sam_predictor is not None:
+                text_query = " . ".join([p for p in self.config.text_prompts if p != "background"])
+                gd_masks = segment_with_grounding_dino_and_sam2(
+                    image=image_np,
+                    text_prompt=text_query,
+                    sam2_predictor=self._sam_predictor,
+                    grounding_detector=self._grounding_detector,
+                )
+                if len(gd_masks) > 0:
+                    for m in gd_masks:
+                        if "bbox" not in m and "box" in m:
+                            b = m["box"]
+                            m["bbox"] = [b[0], b[1], b[2] - b[0], b[3] - b[1]]
+                    return gd_masks
+
         masks = self.sam_generator.generate(image_np)
 
         # Filter by minimum area
@@ -647,6 +675,20 @@ Examples:
         help="Maximum masks to keep per frame",
     )
 
+    # Grounding DINO
+    parser.add_argument(
+        "--use_grounding_dino", action="store_true",
+        help="Use Grounding DINO for text-prompted box detection before SAM 2",
+    )
+    parser.add_argument(
+        "--grounding_dino_config", type=str, default=None,
+        help="Path to Grounding DINO config file",
+    )
+    parser.add_argument(
+        "--grounding_dino_checkpoint", type=str, default=None,
+        help="Path to Grounding DINO checkpoint file",
+    )
+
     # Runtime
     parser.add_argument(
         "--device", type=str, default="cuda",
@@ -681,6 +723,9 @@ def main():
         clip_model_name=args.clip_model_name,
         text_prompts=args.text_prompts,
         max_masks_per_frame=args.max_masks_per_frame,
+        use_grounding_dino=args.use_grounding_dino,
+        grounding_dino_config=args.grounding_dino_config,
+        grounding_dino_checkpoint=args.grounding_dino_checkpoint,
         device=args.device,
         batch_size=args.batch_size,
         process_test_frames=not args.no_test,

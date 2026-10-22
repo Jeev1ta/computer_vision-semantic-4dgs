@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Semantic 3DGS — Object Viewer &amp; Pipeline Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <h1>Semantic 3DGS</h1>
+        <p id="mode-line">multi-view 2D→3D label transfer on Gaussian Splats</p>
+      </div>
+    </div>
+    <div class="badges">
+      <span id="badge-backend" class="badge">backend: …</span>
+      <span id="badge-mode" class="badge">mode: …</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: controls -->
+    <aside id="left-panel">
+      <section class="card">
+        <h2>Segment an image</h2>
+        <p class="hint">Any image → real instance segmentation → honest 2.5D cloud.
+            Depth axis is a labeled assumption (no multi-view geometry).</p>
+        <input type="file" id="file-input" accept="image/*" hidden>
+        <button id="btn-choose" class="btn secondary">Choose image…</button>
+        <img id="preview" alt="preview" hidden>
+        <label class="row">Backend
+          <select id="backend-select">
+            <option value="auto">auto</option>
+            <option value="classical">classical (CPU)</option>
+            <option value="sam2">SAM2</option>
+          </select>
+        </label>
+        <label class="row">Max objects
+          <input type="number" id="max-objects" value="8" min="1" max="30">
+        </label>
+        <button id="btn-segment" class="btn primary" disabled>Segment &amp; lift</button>
+        <div id="segment-status" class="status"></div>
+      </section>
+
+      <section class="card">
+        <h2>Objects</h2>
+        <label class="row">Confidence min
+          <input type="range" id="conf-slider" min="0" max="1" step="0.05" value="0">
+          <span id="conf-val">0.00</span>
+        </label>
+        <ul id="object-list"></ul>
+        <div class="row-btns">
+          <button id="btn-show-all" class="btn tiny">Show all</button>
+          <button id="btn-hide-all" class="btn tiny">Isolate none</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Multi-view pipeline</h2>
+        <p class="hint">Runs the real 2D→3D association on the trained model +
+            COLMAP + masks configured in configs/config.yaml.</p>
+        <label class="row">Strategy
+          <select id="strategy-select">
+            <option value="weighted">weighted (proposed)</option>
+            <option value="majority">majority</option>
+            <option value="single_view">single view</option>
+          </select>
+        </label>
+        <label class="row">min_views
+          <input type="number" id="min-views" value="2" min="1" max="10">
+        </label>
+        <button id="btn-run" class="btn primary">Run association</button>
+        <button id="btn-ablation" class="btn secondary">Run full ablation</button>
+        <div id="pipeline-status" class="status"></div>
+      </section>
+    </aside>
+
+    <!-- Center: 3D view -->
+    <section id="center-panel">
+      <div id="canvas-container"></div>
+      <div class="view-btns">
+        <button class="btn tiny active" id="btn-view-orbit">Orbit</button>
+        <button class="btn tiny" id="btn-view-top">Top-down</button>
+        <button class="btn tiny" id="btn-view-side">Side</button>
+      </div>
+      <div id="scene-stats">
+        <span id="stat-points">–</span> points ·
+        <span id="stat-shown">–</span> shown ·
+        <span id="stat-objects">–</span> objects
+      </div>
+    </section>
+
+    <!-- Right: metrics -->
+    <aside id="right-panel">
+      <section class="card">
+        <h2>Ablation</h2>
+        <div class="chart-wrap"><canvas id="ablation-chart"></canvas></div>
+        <table id="ablation-table">
+          <thead><tr><th>system</th><th>labeled</th><th>rate</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h2>Evaluation (projected-back)</h2>
+        <table id="eval-table">
+          <thead><tr><th>object</th><th>IoU</th><th>prec</th><th>recall</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h2>Run metrics</h2>
+        <pre id="metrics-pre">no run yet</pre>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

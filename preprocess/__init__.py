@@ -12,5 +12,6 @@ Usage:
 
 from preprocess.config import SemanticConfig
 from preprocess.extract_semantics import SemanticExtractor
+from preprocess.grounding_dino_sam import GroundingDINODetector, segment_with_grounding_dino_and_sam2
 
-__all__ = ["SemanticConfig", "SemanticExtractor"]
+__all__ = ["SemanticConfig", "SemanticExtractor", "GroundingDINODetector", "segment_with_grounding_dino_and_sam2"]

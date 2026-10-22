@@ -1,0 +1,58 @@
+# configs/config.yaml
+# Central configuration for the semantic-3DGS integration pipeline.
+
+scene_name: my_scene
+
+paths:
+  gaussian_splatting_repo: third_party/gaussian-splatting
+  sam2_repo: third_party/sam2
+  dataset_dir: data/my_scene            # after convert.py: contains images/, sparse/0/
+  model_dir: outputs/3dgs/my_scene      # -m argument passed to train.py
+  mask_dir: outputs/masks/my_scene      # masks/ + metadata/ written by the segmenter
+  semantic_dir: outputs/semantic/my_scene
+
+sam2:
+  # Used only when third_party/sam2 is installed (scripts/setup_sam2.py).
+  # The pipeline auto-detects it and falls back to the classical CPU
+  # segmenter otherwise -- see integration/segmentation.py.
+  checkpoint: third_party/sam2/checkpoints/sam2.1_hiera_small.pt
+  model_cfg: configs/sam2.1/sam2.1_hiera_s.yaml
+  device: cuda        # automatically downgraded to CPU when no GPU is present
+
+segmentation:
+  backend: auto       # auto | sam2 | classical
+  max_objects: 8      # cap for automatic (prompt-free) segmentation
+  min_mask_area: 25   # pixels; masks smaller than this never vote
+
+association:
+  # Which strategy to run for the FINAL demo output (guide section 23).
+  strategy: weighted            # single_view | majority | weighted
+  min_views: 2                  # min supporting views before a label is kept
+  min_mask_area: 25             # pixels; ignore masks smaller than this
+  min_opacity: 0.05             # ignore near-transparent Gaussians entirely
+
+# Objects to prompt SAM2 with (prompted multi-view workflow), keyed by a
+# representative frame. Optional: with backend=auto and no prompts, the
+# automatic segmenter discovers objects instead.
+objects:
+  - object_id: 1
+    label: chair
+    source_frame: "00020.jpg"
+    points: [[400, 300]]
+    point_labels: [1]
+  - object_id: 2
+    label: table
+    source_frame: "00015.jpg"
+    points: [[250, 350]]
+    point_labels: [1]
+
+# Ablation systems to run for the evaluation section (guide section 23).
+ablation:
+  - name: baseline_A_single_view
+    strategy: single_view
+  - name: baseline_B_majority
+    strategy: majority
+    min_views: 1
+  - name: proposed_weighted
+    strategy: weighted
+    min_views: 2

@@ -1,0 +1,21 @@
+# Environment C: "integration" -- the lightweight glue environment.
+# This is DELIBERATELY separate from the 3DGS (CUDA/torch) and SAM2
+# (torch>=2.5.1) environments, per guide section 5. It has no GPU
+# dependency at all: association.py, projection.py and voting.py are
+# pure numpy, so this env can even run on a laptop.
+#
+# Install with:
+#   pip install -r requirements-integration.txt
+#
+# NOTE: plyfile is optional -- integration/plyfile_lite.py provides an
+# offline fallback when it is not installed.
+
+numpy>=1.24
+scikit-image>=0.22     # classical segmentation backend (Felzenszwalb graph segmentation)
+plyfile>=1.0           # preferred PLY backend; plyfile_lite is the offline fallback
+opencv-python>=4.8
+Pillow>=10.0
+matplotlib>=3.7
+PyYAML>=6.0
+gradio>=4.0        # only needed for integration/web_ui.py (guide section 19, Option B)
+pytest>=7.4         # for tests/

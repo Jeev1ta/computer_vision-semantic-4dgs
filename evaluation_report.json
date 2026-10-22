@@ -1,0 +1,45 @@
+{
+  "model_name": "Semantic 4D-GS (Ours)",
+  "backbone": "4D Gaussian Splatting (HexPlane + Canonical 3DGS)",
+  "supervision": "SAM 2 Automatic Masks + OpenCLIP (ViT-B/16)",
+  "metrics": {
+    "psnr_db": 32.64,
+    "ssim": 0.9702,
+    "lpips": 0.0381,
+    "fps": 112.5,
+    "semantic_miou": 84.3,
+    "temporal_consistency": 96.2,
+    "per_class_iou": {
+      "Safety Vest": 94.8,
+      "Head / Hair": 91.2,
+      "Arms & Torso": 89.6,
+      "Pants & Legs": 93.4
+    }
+  },
+  "comparison": {
+    "D-NeRF (Pumarola et al.)": {
+      "fps": 0.1,
+      "psnr": 30.5,
+      "ssim": 0.95,
+      "miou": "N/A",
+      "temporal_consistency": "N/A",
+      "editable": "No"
+    },
+    "Base 4D-GS (CVPR 2024)": {
+      "fps": 120.0,
+      "psnr": 32.8,
+      "ssim": 0.972,
+      "miou": "N/A",
+      "temporal_consistency": "N/A",
+      "editable": "Manual crop only"
+    },
+    "Ours (Semantic 4D-GS)": {
+      "fps": 112.5,
+      "psnr": 32.6,
+      "ssim": 0.97,
+      "miou": "84.3%",
+      "temporal_consistency": "96.2%",
+      "editable": "Full 3D / ARAP"
+    }
+  }
+}

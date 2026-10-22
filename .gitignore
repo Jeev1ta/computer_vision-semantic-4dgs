@@ -13,3 +13,4 @@ scratch/
 __pycache__/
 *.egg-info/
 .DS_Store
+semantic_3dgs_uthkarsh/
