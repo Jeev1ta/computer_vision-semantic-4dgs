@@ -1,0 +1,41 @@
+digraph ProjectWorkflow {
+  graph [rankdir=LR, bgcolor="white", pad="0.18", nodesep="0.35", ranksep="0.55", fontname="Helvetica", labelloc="t", label="Repository workflow: two distinct semantic pathways", fontsize=18];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, color="#28557A", fillcolor="#EEF5FA", margin="0.15,0.10"];
+  edge [fontname="Helvetica", fontsize=9, color="#44657D", arrowsize=0.75];
+
+  subgraph cluster_dynamic {
+    label="A. Dynamic learned-semantic path (4D-GS code path)";
+    fontsize=12; fontname="Helvetica Bold"; color="#86AFC8"; style="rounded";
+    frames [label="Dynamic multi-view frames\n+ camera poses + timestamps"];
+    masks [label="SAM 2 masks\n(optional Grounding DINO boxes)"];
+    targets [label="OpenCLIP region features\n+ prompt label / dense maps"];
+    model [label="4D-GS model\ncanonical Gaussians + HexPlane/MLP deformation"];
+    sem [label="Per-Gaussian semantic attributes\n+ multi-pass semantic rendering"];
+    objectives [label="RGB objective + configured\nsemantic loss (fine stage)"];
+    frames -> masks -> targets -> objectives;
+    model -> objectives;
+    model -> sem;
+    objectives -> sem;
+  }
+
+  subgraph cluster_static {
+    label="B. Separate static geometric transfer path";
+    fontsize=12; fontname="Helvetica Bold"; color="#9EBE9A"; style="rounded";
+    staticcloud [label="Static Gaussian cloud\n(PLY)"];
+    cameras [label="COLMAP camera intrinsics\n+ extrinsics"];
+    viewmasks [label="Per-view 2D object masks\n+ optional confidence"];
+    project [label="Project Gaussian centers\ninto calibrated images"];
+    vote [label="Single-view / majority /\nconfidence-weighted voting"];
+    outputs [label="Per-Gaussian labels + confidence\n+ visualization artifacts"];
+    staticcloud -> project;
+    cameras -> project;
+    viewmasks -> project;
+    project -> vote -> outputs;
+  }
+
+  editing [label="Gaussian editing prototype\n(class selection, recolor, remove,\nanchor-weighted position transform)", fillcolor="#FFF5E8", color="#BA8245"];
+  sem -> editing [style=dashed, label="semantic-aware selection path"];
+  outputs -> editing [style=dashed, label="static labels (separate path)"];
+  note [shape=note, label="Browser image-upload visualization is illustrative;\nnot trained 4D-GS inference or a benchmark result.", fillcolor="#FFFBE7", color="#B8A44A", fontsize=9];
+  editing -> note [style=dotted, arrowhead=none];
+}
