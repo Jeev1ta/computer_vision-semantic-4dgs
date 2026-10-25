@@ -6,8 +6,8 @@
 
 ---
 
-## ⚡ Quickstart: Complete 4-Phase Guided Colab Notebooks
-Running on Google Colab requires **zero local setup** and runs seamlessly on a free T4 GPU:
+## Guided Notebooks (status must be verified per run)
+The notebooks document the intended four-phase workflow. They are not proof that the complete pipeline has been run; confirm runtime, data, CUDA build, and saved outputs in a fresh session before presenting an end-to-end result:
 
 1. **[4DGS_Phase1_Baseline.ipynb](4DGS_Phase1_Baseline.ipynb)** — Base paper dynamic reconstruction on D-NeRF benchmark.
 2. **[4DGS_Phase2_Semantics.ipynb](4DGS_Phase2_Semantics.ipynb)** — 2D Video segmentation & CLIP feature distillation with SAM 2 + Grounding DINO.
@@ -16,8 +16,12 @@ Running on Google Colab requires **zero local setup** and runs seamlessly on a f
 
 ---
 
-## 🎮 Interactive Demonstration Dashboard
-Open `demo.html` directly in any modern web browser to explore:
+## Interactive Demonstration Dashboard
+Open `demo.html` directly in a modern browser for an illustrative UI. Its image-upload path synthesizes a point/splat visualization; it is not a renderer or editor for a trained dynamic 4D-GS checkpoint. Do not present it as a live trained-model result.
+
+The separate `dashboard/` application operates on the static multi-view semantic-labeling pipeline. It is not the dynamic 4D-GS training/editor UI.
+
+The demo includes:
 - **Tab 1**: Real-Time 4D-GS Replay & Multi-View Input Showcase with 360° WebGL Gaussian Orbit.
 - **Tab 2**: Interactive RGB vs 3D Semantic Segmentation Comparison Slider.
 - **Tab 3**: **Interactive 3D Semantic & ARAP Editing Studio** — Recolor parts, delete objects, disassemble 3D limbs, and view SC-GS control anchors in real time (<15 ms).
@@ -26,7 +30,13 @@ Open `demo.html` directly in any modern web browser to explore:
 
 ---
 
-## 📊 Final Quantitative Benchmark Results
+## 📊 Evaluation status
+
+The figures in earlier presentation/report drafts (including 84.3% mIoU, 96.2% temporal consistency, PSNR/SSIM, and FPS) are **not independently verified by the checked-in evaluation path**. `eval_semantics.py` now requires actual rendered label maps and matching ground-truth labels, pairs files by filename, and reports only pixel-space label-map IoU. It does not compute temporal consistency, 3D accuracy, PSNR/SSIM/LPIPS, or FPS. Do not cite numerical claims until a documented run produces reproducible artifacts and the corresponding metric implementation.
+
+Run the evidence-based evaluator with `--model_path` and `--semantics_gt`; it fails rather than substituting example numbers when data is missing.
+
+### Historical, unverified figures (do not cite as results)
 
 | Model / Architecture | Speed (FPS) | PSNR (dB) ↑ | SSIM ↑ | Semantic mIoU | Temporal Consistency | 3D Object Editable |
 |---|---|---|---|---|---|---|
@@ -35,7 +45,7 @@ Open `demo.html` directly in any modern web browser to explore:
 | **SC-GS (CVPR 2024)** | ~100 FPS | 31.4 dB | 0.961 | ❌ None | ❌ N/A | ⚠️ Manual control points |
 | **⭐ Ours (Semantic 4D-GS)** | **112.5 FPS** | **32.64 dB** | **0.9702** | **✅ 84.3% in 3D** | **✅ 96.2% (Zero Flicker)** | **✅ Semantic & ARAP** |
 
-**Per-Class 3D Segmentation Breakdown**:
+**Per-class figures from the prior draft (unverified)**:
 - 🔴 **Safety Vest**: `94.8% IoU`
 - 🔵 **Head / Hair**: `91.2% IoU`
 - 🟢 **Arms & Torso**: `89.6% IoU`
@@ -48,15 +58,15 @@ Open `demo.html` directly in any modern web browser to explore:
 ### 1. Run Quantitative Benchmark Evaluation
 ```bash
 python eval_semantics.py --benchmark
-# Evaluates mIoU, per-class IoU, spatio-temporal consistency, and visual fidelity.
+# Compares actual 2D label maps by filename; does not measure temporal/appearance/FPS.
 ```
 
 ### 2. 3D Semantic Object Editing & ARAP Manipulation
 ```bash
-# Zero-setup verification demo:
+# Synthetic smoke test only (not a trained scene):
 python edit.py --demo
 
-# Recolor safety vest to neon cyan:
+# Recolor a known class in a trained checkpoint:
 python edit.py --model_path output/standup --query "vest" --action recolor --color 0 255 255
 
 # Remove head (inpainting):
@@ -65,6 +75,8 @@ python edit.py --model_path output/standup --query "head" --action remove
 # Translate arms with ARAP skinning:
 python edit.py --model_path output/standup --query "arms" --action translate --dy 0.3 --arap
 ```
+
+The editor currently supports known class-name matching, not arbitrary natural-language CLIP selection from this CLI. Its anchor-weighted local transform blend is SC-GS-inspired, but is not an ARAP energy optimization. It edits Gaussian positions; verify covariance/orientation and time-dependent deformation behavior before claiming physically coherent 4D edits. A static PLY alone does not preserve the full dynamic scene; the CLI attempts to export matching deformation/semantic sidecars.
 
 ### 3. Open-Vocabulary 2D Extraction (with Grounding DINO + SAM 2)
 ```bash

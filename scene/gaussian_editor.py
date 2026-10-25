@@ -86,23 +86,27 @@ class GaussianEditor:
     def select_by_class_id(self, class_id: int) -> Union[torch.Tensor, np.ndarray]:
         """Return boolean mask of Gaussians assigned to the target class ID."""
         if not hasattr(self.model, "has_semantics") or not self.model.has_semantics:
-            # Fallback heuristic based on spatial bounds if semantics not loaded
-            xyz = self.model._xyz
-            if TORCH_AVAILABLE and isinstance(xyz, torch.Tensor):
-                xyz_np = xyz.detach().cpu().numpy()
-            else:
-                xyz_np = np.asarray(xyz)
-            mask = self._heuristic_class_mask(xyz_np, class_id)
-            if TORCH_AVAILABLE and isinstance(xyz, torch.Tensor):
-                return torch.from_numpy(mask).to(xyz.device)
-            return mask
+            raise RuntimeError("Cannot select semantic classes: this model has no trained semantic features")
+
+        if class_id < 0 or class_id >= len(self.class_names):
+            raise ValueError(f"Class ID {class_id} is outside [0, {len(self.class_names) - 1}]")
 
         sem_feats = self.model.get_semantic_features
         if TORCH_AVAILABLE and isinstance(sem_feats, torch.Tensor):
+            if sem_feats.ndim != 2 or sem_feats.shape[1] != len(self.class_names):
+                raise ValueError(
+                    f"Class selection requires one logit per class ({len(self.class_names)}), "
+                    f"but semantic features have shape {tuple(sem_feats.shape)}"
+                )
             pred_classes = sem_feats.argmax(dim=-1)
             return pred_classes == class_id
         else:
             sem_np = np.asarray(sem_feats)
+            if sem_np.ndim != 2 or sem_np.shape[1] != len(self.class_names):
+                raise ValueError(
+                    f"Class selection requires one logit per class ({len(self.class_names)}), "
+                    f"but semantic features have shape {sem_np.shape}"
+                )
             return sem_np.argmax(axis=-1) == class_id
 
     def select_by_text(
@@ -118,41 +122,44 @@ class GaussianEditor:
             text_features: Optional precomputed CLIP text embeddings.
             threshold: Cosine similarity cutoff.
         """
-        prompt_lower = prompt.lower().strip()
+        prompt_lower = " ".join(prompt.lower().split())
+        if not prompt_lower:
+            raise ValueError("Text query must not be empty")
+        prompt_words = set(prompt_lower.split())
         for idx, cname in enumerate(self.class_names):
-            if any(term in cname.lower() for term in prompt_lower.split()):
+            class_words = set(cname.lower().split())
+            if prompt_lower == cname.lower() or (prompt_words and prompt_words.issubset(class_words)):
                 print(f"[GaussianEditor] Matched prompt '{prompt}' to class {idx}: {cname}")
                 return self.select_by_class_id(idx)
 
         # Direct CLIP feature cosine similarity if available
         if hasattr(self.model, "has_semantics") and self.model.has_semantics and text_features is not None:
             sem_feats = self.model.get_semantic_features
-            if TORCH_AVAILABLE and isinstance(sem_feats, torch.Tensor) and isinstance(text_features, torch.Tensor):
+            if TORCH_AVAILABLE and isinstance(sem_feats, torch.Tensor):
+                if not isinstance(text_features, torch.Tensor):
+                    text_features = torch.as_tensor(text_features, device=sem_feats.device, dtype=sem_feats.dtype)
+                else:
+                    text_features = text_features.to(device=sem_feats.device, dtype=sem_feats.dtype)
+                if text_features.numel() == 0 or sem_feats.ndim != 2 or text_features.shape[-1] != sem_feats.shape[-1]:
+                    raise ValueError("CLIP text features must be non-empty and match the Gaussian feature dimension")
                 norm_feats = F.normalize(sem_feats, dim=-1)
-                norm_text = F.normalize(text_features, dim=-1)
-                sim = torch.matmul(norm_feats, norm_text.T).squeeze(-1)
-                return sim > threshold
+                norm_text = F.normalize(text_features.reshape(-1, sem_feats.shape[-1]), dim=-1)
+                sim = norm_feats @ norm_text.T
+                return sim.max(dim=-1).values > threshold
 
-        # Default fallback
-        print(f"[GaussianEditor] Prompt '{prompt}' defaulting to class 1 ({self.class_names[1]})")
-        return self.select_by_class_id(1)
+            sem_np = np.asarray(sem_feats)
+            text_np = np.asarray(text_features)
+            if text_np.size == 0 or sem_np.ndim != 2 or text_np.shape[-1] != sem_np.shape[-1]:
+                raise ValueError("CLIP text features must be non-empty and match the Gaussian feature dimension")
+            sem_norm = sem_np / np.maximum(np.linalg.norm(sem_np, axis=-1, keepdims=True), 1e-12)
+            text_np = text_np.reshape(-1, sem_np.shape[-1])
+            text_norm = text_np / np.maximum(np.linalg.norm(text_np, axis=-1, keepdims=True), 1e-12)
+            return (sem_norm @ text_norm.T).max(axis=-1) > threshold
 
-    def _heuristic_class_mask(self, xyz_np: np.ndarray, class_id: int) -> np.ndarray:
-        """Spatial heuristic partitioning if semantic features were not loaded."""
-        y = xyz_np[:, 1]
-        y_min, y_max = y.min(), y.max()
-        norm_y = (y - y_min) / (y_max - y_min + 1e-6)
-
-        if class_id == 1:    # Safety Vest (mid torso)
-            return np.logical_and(norm_y >= 0.45, norm_y < 0.70)
-        elif class_id == 2:  # Head (upper)
-            return norm_y >= 0.70
-        elif class_id == 3:  # Arms & Torso
-            return np.logical_and(norm_y >= 0.40, norm_y < 0.65)
-        elif class_id == 4:  # Pants & Legs (lower)
-            return norm_y < 0.40
-        else:
-            return np.ones(xyz_np.shape[0], dtype=bool)
+        raise ValueError(
+            f"Query '{prompt}' does not match a known class. Supply compatible CLIP text features "
+            "to perform embedding-based selection."
+        )
 
     # ─────────────────────────────────────────────────────────────────
     # 2. SC-GS Sparse Control Anchors & ARAP Deformation Engine

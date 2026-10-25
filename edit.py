@@ -41,10 +41,7 @@ except ImportError:
     torch = None
     TORCH_AVAILABLE = False
 
-try:
-    from utils.gaussian_editor import GaussianEditor
-except ImportError:
-    from scene.gaussian_editor import GaussianEditor
+from scene.gaussian_editor import GaussianEditor
 
 
 class MockGaussianModel:
@@ -159,7 +156,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="3D Semantic Gaussian Editing")
     parser.add_argument("--model_path", type=str, default=None, help="Path to trained 4D-GS model directory")
     parser.add_argument("--iteration", type=int, default=-1, help="Iteration checkpoint to edit (-1 = latest)")
-    parser.add_argument("--query", type=str, default="vest", help="Semantic class name or CLIP text prompt")
+    parser.add_argument("--query", type=str, default="vest", help="Known semantic class name/phrase (this CLI does not encode arbitrary text prompts)")
+    parser.add_argument("--class_names", nargs="+", help="Required class map in semantic-logit ID order, including background and any reserved IDs")
     parser.add_argument(
         "--action", type=str, default="recolor",
         choices=["recolor", "remove", "translate", "rotate", "scale", "isolate"],
@@ -173,7 +171,12 @@ def parse_args():
     parser.add_argument("--ry", type=float, default=0.0, help="Rotation Y (degrees)")
     parser.add_argument("--rz", type=float, default=0.0, help="Rotation Z (degrees)")
     parser.add_argument("--scale", type=float, default=1.0, help="Scale factor")
-    parser.add_argument("--arap", action="store_true", default=True, help="Use SC-GS ARAP anchor skinning")
+    parser.add_argument(
+        "--arap",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use anchor-weighted local transform blending (not an ARAP optimization)",
+    )
     # Color parameters
     parser.add_argument("--color", nargs=3, type=float, default=[0.0, 255.0, 255.0], help="RGB color in [0, 255]")
     parser.add_argument("--output_dir", type=str, default="output/edited_model", help="Where to save edited model")
@@ -185,25 +188,61 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if args.demo or args.model_path is None:
+    if args.demo:
         run_demo()
         return
+    if args.model_path is None:
+        raise SystemExit("Provide --model_path for a trained scene or pass --demo for the synthetic smoke test.")
 
     print(f"[GaussianEditor] Loading model from: {args.model_path}")
-    from arguments import ModelParams, ModelHiddenParams
-    from scene import GaussianModel, Scene
+    from argparse import ArgumentParser
+    from arguments import ModelHiddenParams
+    from scene import GaussianModel
 
     class DummyArgs:
         def __init__(self, d):
             for k, v in d.items():
                 setattr(self, k, v)
 
-    # Initialize model
-    model_params = DummyArgs({"sh_degree": 3, "semantic_feature_dim": 5})
-    gaussians = GaussianModel(3, model_params)
-    gaussians.load_model(args.model_path)
+    model_root = Path(args.model_path)
+    point_cloud_root = model_root / "point_cloud"
+    if args.iteration < 0:
+        candidates = [
+            path for path in point_cloud_root.glob("iteration_*")
+            if path.is_dir() and path.name.removeprefix("iteration_").isdigit()
+        ]
+        if not candidates:
+            raise FileNotFoundError(f"No trained point-cloud iterations found under {point_cloud_root}")
+        iteration_dir = max(candidates, key=lambda path: int(path.name.removeprefix("iteration_")))
+    else:
+        iteration_dir = point_cloud_root / f"iteration_{args.iteration}"
+    ply_path = iteration_dir / "point_cloud.ply"
+    if not ply_path.is_file():
+        raise FileNotFoundError(f"Trained Gaussian PLY not found: {ply_path}")
 
-    editor = GaussianEditor(gaussians)
+    # Recreate the deformation network with the project's full model configuration.
+    hidden_parser = ArgumentParser()
+    hidden_params = ModelHiddenParams(hidden_parser)
+    model_params = hidden_params.extract(hidden_parser.parse_args([]))
+    model_params.semantic_feature_dim = 5
+
+    # Initialize and load the Gaussian PLY before its matching deformation state.
+    gaussians = GaussianModel(3, model_params)
+    gaussians.load_ply(str(ply_path))
+    gaussians.load_model(str(iteration_dir))
+
+    if not args.class_names:
+        raise SystemExit(
+            "Provide --class_names in semantic feature index order (including background); "
+            "the checkpoint does not persist a verified class-name mapping."
+        )
+    if len(args.class_names) != gaussians.semantic_feature_dim:
+        raise SystemExit(
+            f"Received {len(args.class_names)} class names, but checkpoint semantic features have "
+            f"dimension {gaussians.semantic_feature_dim}. Supply the exact ID mapping."
+        )
+
+    editor = GaussianEditor(gaussians, class_names=args.class_names)
     mask = editor.select_by_text(args.query)
 
     if args.action == "remove":
@@ -222,8 +261,12 @@ def main():
             use_arap=args.arap,
         )
 
-    out_ply = os.path.join(args.output_dir, "point_cloud.ply")
+    output_iteration = Path(args.output_dir) / "point_cloud" / iteration_dir.name
+    out_ply = output_iteration / "point_cloud.ply"
+    output_iteration.mkdir(parents=True, exist_ok=True)
     editor.export_edited_ply(out_ply)
+    gaussians.save_deformation(str(output_iteration))
+    print(f"[GaussianEditor] Exported deformation and semantic sidecars to: {output_iteration}")
 
 
 if __name__ == "__main__":
