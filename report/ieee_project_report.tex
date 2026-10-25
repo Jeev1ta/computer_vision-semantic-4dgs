@@ -1,0 +1,150 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\title{Semantic-Aware Dynamic 3D Gaussian Splatting with SAM 2--CLIP Distillation and Object-Level Editing}
+
+\author{\IEEEauthorblockN{Uthkarsh Sai}
+\IEEEauthorblockA{Group 08, Computer Vision Course Project\\Amrita Vishwa Vidyapeetham, India}
+\and
+\IEEEauthorblockN{Akhil Reddy}
+\IEEEauthorblockA{Group 08, Computer Vision Course Project\\Amrita Vishwa Vidyapeetham, India}
+\and
+\IEEEauthorblockN{Tenisha Akhila}
+\IEEEauthorblockA{Group 08, Computer Vision Course Project\\Amrita Vishwa Vidyapeetham, India}
+\and
+\IEEEauthorblockN{Jagapathi Naidu}
+\IEEEauthorblockA{Group 08, Computer Vision Course Project\\Amrita Vishwa Vidyapeetham, India}
+\and
+\IEEEauthorblockN{Jeevita Bhupati}
+\IEEEauthorblockA{Group 08, Computer Vision Course Project\\Amrita Vishwa Vidyapeetham, India}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Dynamic 3D Gaussian Splatting (4D-GS) represents a time-varying scene with explicit Gaussians and a learned deformation field, enabling efficient novel-view rendering. Appearance and motion alone, however, do not provide explicit object or part identity for semantic selection and editing. This project investigates a prototype extension that combines a 4D-GS code path with per-frame semantic supervision derived from Segment Anything Model 2 (SAM 2) masks and Contrastive Language--Image Pretraining (CLIP) features. The repository also contains a separate, static multi-view semantic-transfer pathway that projects Gaussian centers into calibrated camera images and aggregates mask labels by voting. A Gaussian editing prototype supports class-conditioned selection and localized appearance or position changes. We describe these components, their interfaces, and their limitations. The available checked-in evaluation path supports pixel-space label-map IoU when predictions and ground-truth labels are supplied; it does not establish 3D semantic accuracy, temporal consistency, photometric quality, frame rate, or editing quality. Consequently, this report makes no quantitative performance claim and presents the work as an implementation prototype pending reproducible end-to-end experiments.
+\end{abstract}
+
+\begin{IEEEkeywords}
+4D Gaussian Splatting, dynamic scene reconstruction, semantic distillation, SAM 2, CLIP, multi-view projection, Gaussian editing.
+\end{IEEEkeywords}
+
+\section{Introduction}
+Three-dimensional Gaussian Splatting (3DGS) represents a scene using explicit anisotropic Gaussians and differentiable rasterization, offering high-quality rendering with an efficient optimization and display pipeline~\cite{kerbl2023gs}. Dynamic scenes require the representation to account for motion over time. 4D-GS augments canonical Gaussians with a time-conditioned deformation model and spatial-temporal features, including HexPlane representations~\cite{wu20244dgs,wang2023hexplane}. These methods primarily model geometry, motion, and appearance; those quantities do not by themselves provide reliable object identity or text-queryable semantic attributes.
+
+This project explores semantic supervision and object-level interaction for dynamic Gaussian scenes. The dynamic pathway uses 2D masks and image-language features as training targets for semantic attributes associated with Gaussians. In addition, the repository includes a geometric semantic-transfer pipeline for static 3D Gaussian clouds: it projects Gaussian centers into calibrated views, samples 2D masks, and aggregates observations across views. These pathways address related but distinct settings and should not be interpreted as a single validated end-to-end system.
+
+The contributions of this project are engineering and methodological prototypes:
+\begin{itemize}
+    \item A code path for attaching learnable semantic attributes to the 4D-GS Gaussian model and applying semantic supervision during fine-stage training.
+    \item A SAM 2--CLIP preprocessing path that converts image masks and text prompts into per-frame label maps and dense feature maps.
+    \item A separate static-scene projection and multi-view voting pipeline, with single-view, majority, and confidence-weighted strategies.
+    \item A prototype Gaussian editor for class-based selection, recoloring, removal, and anchor-weighted position transforms.
+\end{itemize}
+The repository does not yet provide reproducible evidence sufficient to claim benchmark improvements, temporally stable semantic identity, physically coherent dynamic edits, or state-of-the-art performance.
+
+\section{Related Work}
+\subsection{Gaussian Scene Representations}
+Kerbl \emph{et al.} introduced 3DGS, representing scenes with explicit Gaussians and a differentiable splatting renderer~\cite{kerbl2023gs}. Wu \emph{et al.} extended this representation to dynamic scenes with 4D-GS by learning time-dependent deformations of canonical Gaussians~\cite{wu20244dgs}. HexPlane encodes spatiotemporal features using planes and is one representation relevant to dynamic neural fields~\cite{wang2023hexplane}. Our implementation uses the 4D-GS repository structure as its dynamic reconstruction base.
+
+\subsection{Promptable Segmentation and Vision--Language Features}
+Segment Anything provides promptable segmentation, and SAM 2 extends promptable segmentation to images and videos~\cite{kirillov2023sam,ravi2024sam2}. CLIP learns aligned image and text representations that support zero-shot comparison against text prompts~\cite{radford2021clip}. Grounding DINO provides open-set language-conditioned object detection and can be used to provide boxes to a segmentation model~\cite{liu2023groundingdino}. In this project, these models provide 2D pseudo-labels and features; their outputs are supervision signals, not ground-truth 3D annotations.
+
+\subsection{Semantic Editing and Multi-View Transfer}
+SC-GS studies sparse control points for editing Gaussian scenes~\cite{huang2024scgs}. Our current editor borrows the idea of sparse spatial anchors but uses normalized distance-based transform blending; it does not solve a local rigidity energy and is therefore described as anchor-weighted editing rather than a verified ARAP solver. The separate multi-view transfer pipeline uses camera calibration and 2D mask observations to assign labels to static Gaussian centers. Unlike learned semantic attributes in the dynamic path, the transfer path does not jointly optimize semantics with a time-varying scene model.
+
+\section{System Overview}
+The repository contains three user-facing or processing paths:
+\begin{enumerate}
+    \item \textbf{Dynamic 4D-GS semantic path:} dataset frames are processed by SAM 2 and CLIP; resulting label and feature maps are loaded as supervision for semantic Gaussian attributes; the dynamic model renders RGB and semantic channels.
+    \item \textbf{Static geometric transfer path:} a trained static Gaussian cloud, COLMAP cameras, and per-view masks are used to project points, sample mask labels, and vote across views.
+    \item \textbf{Presentation and editing prototypes:} a browser visualization illustrates splats and controls; a Python editor operates on Gaussian model data. The browser upload effect is synthetic and is not connected to trained dynamic inference.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.94\columnwidth}{\centering
+\textbf{Dynamic pathway:} Multi-view/time images $\rightarrow$ SAM 2 masks + CLIP features $\rightarrow$ semantic maps $\rightarrow$ 4D-GS training $\rightarrow$ RGB/semantic rendering\\[3pt]
+\textbf{Separate static pathway:} COLMAP cameras + static Gaussian cloud + masks $\rightarrow$ projection and voting $\rightarrow$ per-Gaussian labels}}
+\caption{Repository pathways. The static geometric transfer pipeline is separate from the learned semantic attributes in the dynamic training path.}
+\label{fig:pipeline}
+\end{figure}
+
+\section{Method}
+\subsection{2D Semantic Target Construction}
+For each input frame, the preprocessing pipeline obtains masks from SAM 2; an optional Grounding DINO stage can provide text-conditioned boxes before SAM 2 segmentation. CLIP image features are extracted for masked image crops. Given normalized image feature $\mathbf{f}_i$ for region $i$ and normalized text features $\mathbf{t}_k$ for prompts $k$, the implementation assigns a prompt label by maximum cosine similarity:
+\begin{equation}
+\hat{k}_i = \arg\max_k \; \mathbf{f}_i^{\mathsf T}\mathbf{t}_k.
+\end{equation}
+Mask labels are composed into a per-pixel label map, reserving label zero for unlabeled/background pixels. Dense feature maps assign each pixel the feature of its associated mask; pixels outside masks receive a zero vector. These are model-generated pseudo-targets and may contain segmentation, association, and prompt-classification errors.
+
+\subsection{Semantic Attributes in the Dynamic Gaussian Model}
+The Gaussian model can allocate a trainable semantic vector $\mathbf{s}_j$ for each Gaussian $j$ when semantic features are enabled. A semantic rasterizer renders these attributes using the scene's visibility and opacity contributions. In conceptual form, the rendered semantic feature at pixel $p$ is
+\begin{equation}
+\mathbf{S}(p,t) = \sum_j T_j(p,t)\,\alpha_j(p,t)\,\mathbf{s}_j,
+\end{equation}
+where $T_j$ is accumulated transmittance before Gaussian $j$ and $\alpha_j$ is its pixel contribution. The code uses semantic rendering and may split feature channels into passes to accommodate rasterizer channel limits.
+
+The RGB objective combines an $\ell_1$ reconstruction term and an optional DSSIM term. During fine-stage semantic training, the implementation loads label and/or feature supervision for a camera frame and adds the configured semantic objective:
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\mathrm{RGB}} + \lambda_{\mathrm{sem}}\mathcal{L}_{\mathrm{sem}}, \qquad
+\mathcal{L}_{\mathrm{RGB}} = \mathcal{L}_{1} + \lambda_{\mathrm{DSSIM}}(1-\mathrm{SSIM}).
+\end{equation}
+The semantic loss mode is configured as cross-entropy for label maps or cosine/MSE for feature maps. Exact behavior depends on training configuration and the availability of corresponding extracted targets. The code does not by itself establish that a particular trained checkpoint was produced successfully.
+
+\subsection{Static Multi-View Projection and Voting}
+For a static Gaussian center $\mathbf{X}_w$, the pipeline transforms it into camera coordinates and applies pinhole projection. For camera intrinsics $(f_x,f_y,c_x,c_y)$ and camera-space point $(X_c,Y_c,Z_c)$ with $Z_c>0$,
+\begin{equation}
+ u=f_x X_c/Z_c+c_x, \qquad v=f_y Y_c/Z_c+c_y.
+\end{equation}
+Points behind the camera or outside the image bounds are excluded. The projected pixel is sampled in the corresponding binary/object mask to generate a per-view vote. Aggregation supports: (i) a selected single view, (ii) equal-weight majority voting, and (iii) confidence-weighted voting. Unobserved or insufficiently supported Gaussians retain an unknown label. Confidence is based on winning support (or winning weight) relative to total observed support. This is geometric label transfer for a static Gaussian cloud, not a metric of dynamic 4D semantic reconstruction.
+
+\subsection{Prototype Gaussian Editing}
+The editor can select Gaussians by class logits, recolor the DC spherical-harmonic appearance coefficient, reduce opacity for removal/isolation, and transform selected positions. For anchor-weighted transforms, sparse anchors are selected by farthest-point sampling and points blend anchor-associated transforms according to normalized distance-based weights. This does not optimize an ARAP energy, and the present behavior should not be interpreted as verified physical deformation. Covariance/orientation and consistency through the learned temporal deformation require further implementation and testing.
+
+\section{Implementation}
+The codebase is organized around the upstream 4D-GS model/training/rendering structure, with project additions in the preprocessing, semantic loading, rendering, evaluation, integration, and editing modules. Table~\ref{tab:status} summarizes what is available and the evidence boundary.
+
+\begin{table}[t]
+\caption{Implementation status and evidence boundary}
+\label{tab:status}
+\centering
+\footnotesize
+\begin{tabular}{p{0.27\columnwidth}p{0.28\columnwidth}p{0.37\columnwidth}}
+\toprule
+Component & Repository evidence & What remains unverified \\
+\midrule
+4D-GS baseline & Training, deformation, and render code paths & Reproduction logs, checkpoint, and matched benchmark run \\
+SAM 2--CLIP & Mask, feature, and prompt-label extraction modules & Target quality and cross-frame identity stability \\
+Dynamic semantic path & Semantic attributes, loader, loss and render hooks & Held-out semantic accuracy and temporal consistency \\
+Static voting path & Calibrated projection and three voting strategies & Accuracy against independent labeled 3D/2D ground truth \\
+Editing prototype & Class selection and Gaussian appearance/position operations & 4D coherence, covariance handling, and true ARAP optimization \\
+Browser upload demo & Image-dependent synthetic point visualization & No learned reconstruction or model inference \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Experimental Protocol and Current Results}
+\subsection{Evidence Available}
+The checked-in semantic evaluator pairs rendered single-channel label maps and ground-truth label maps by filename, checks image shape and class range, and computes pixel-space per-class IoU and mean IoU. This metric measures 2D label-map agreement only. The checked-in evaluator does not measure PSNR, SSIM, LPIPS, FPS, temporal correspondence, 3D semantic accuracy, or editing quality. Previous draft values for these metrics are not supported by a traceable run and are intentionally omitted here.
+
+\subsection{Required Evaluation}
+A defensible experiment should record the scene, camera/time split, semantic class mapping, prompts, checkpoint, hardware, software versions, command lines, and all predictions and labels. Baseline and semantic variants should use the same data, image resolution, views, timestamps, and hardware. Report held-out pixel-space semantic IoU against independent manual labels; appearance metrics from held-out RGB; temporal semantic consistency on valid correspondences; and rendering speed with synchronized timing and warm-up. Evaluate editing on a loaded checkpoint at multiple timestamps and report both selected-region behavior and changes to unselected regions. Until those artifacts exist, no numerical performance result is reported.
+
+\subsection{Limitations}
+The semantic targets inherit errors from the segmentation model, prompt design, mask overlap, and occlusion. Per-frame region labels do not guarantee persistent object identity. The static projection pipeline assumes known camera calibration and a static cloud, and point-center sampling may be sensitive to rasterization and visibility boundaries. The editing prototype modifies Gaussian parameters but does not yet demonstrate temporally coherent physical edits or a true ARAP solve. Finally, the browser upload visualization is illustrative and should not be presented as trained model output.
+
+\section{Conclusion}
+This report documents a prototype for adding semantic supervision and editing interfaces around dynamic Gaussian splatting. The repository contains a dynamic learned-semantic path, a separate static geometric multi-view transfer pipeline, and a Gaussian editing prototype. These are useful foundations for experimentation, but source-code presence is not equivalent to a reproduced end-to-end result. The next research step is to run a fixed scene and held-out evaluation with archived checkpoints and labels, then measure semantic accuracy, temporal consistency, visual quality, efficiency, and edit coherence under controlled conditions.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\end{document}
