@@ -6,6 +6,58 @@
 
 ---
 
+## Run it on your computer
+
+There are three different ways to run this repository. Start with the browser demo; it needs no model download or GPU. The demo and lightweight dashboard are prototypes, not the trained dynamic 4D-GS model.
+
+### A. Open the interactive browser demo (no Python packages required)
+
+You need Git and Python 3. Open a terminal:
+
+```bash
+git clone --recursive https://github.com/Tenisha5132/computer_vision-semantic-4dgs.git
+cd computer_vision-semantic-4dgs
+python3 -m http.server 8002
+```
+
+Then visit <http://localhost:8002/demo.html>. Keep the terminal open while using the page; press `Ctrl+C` to stop the local server. On Windows, use `py -m http.server 8002` if `python3` is not available.
+
+The image-upload tab makes an illustrative splat/point-cloud visualization. It does **not** run trained 4D-GS inference or reconstruct a true dynamic 3D scene from one photo.
+
+> **Repository access:** this GitHub repository is private. The owner must invite you as a collaborator before `git clone` will work. Alternatively, ask the owner to make the repository public.
+
+### B. Run the lightweight semantic dashboard (CPU-friendly)
+
+This is a separate static-scene segmentation/projection prototype. It is not the dynamic 4D-GS trainer. Python 3.10 or newer is recommended.
+
+```bash
+cd computer_vision-semantic-4dgs
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-integration.txt
+python dashboard/server.py
+```
+
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` instead of the `source` command. Open <http://localhost:8001>. Use `Ctrl+C` in the server terminal to stop it. The dashboard reports which inputs and outputs are available; provide compatible COLMAP/model/mask data to run the multi-view pipeline. Its single-image mode produces an explicitly approximate 2.5D lift, not a genuine 4D reconstruction.
+
+### C. Train the dynamic 4D-GS model (advanced; NVIDIA GPU required)
+
+This path requires Linux, an NVIDIA GPU, a compatible NVIDIA driver/CUDA toolkit, compiled CUDA extensions, and a supported multi-view dynamic dataset. It is not needed for A or B. A single image is not enough. SAM 2/CLIP semantic extraction also has different PyTorch requirements from the legacy 4D-GS environment; use a separate environment for that phase rather than installing both requirement files into one environment.
+
+1. Clone with submodules, create/activate the environment, and install the CUDA-compatible PyTorch version required by your driver/toolkit. See the setup below; the repository pins legacy dependencies, so verify compatibility on your machine before starting a long install.
+2. Download and prepare a supported dataset (D-NeRF, DyNeRF, HyperNeRF, or a compatible COLMAP dataset) under `data/`. Dataset downloads are separate and are not included in this repository.
+3. Follow the matching training command in the [training instructions](#training). Outputs are written under `output/`.
+
+If you only want to confirm the lightweight integration code, install its dependencies and run its tests:
+
+```bash
+python -m pip install -r requirements-integration.txt
+python -m pytest tests_integration/ -q
+```
+
+Do not cite the historical result values below as verified benchmark results; reproduce them with saved configuration, checkpoints, ground truth, and metric outputs first.
+
 ## Guided Notebooks (status must be verified per run)
 The notebooks document the intended four-phase workflow. They are not proof that the complete pipeline has been run; confirm runtime, data, CUDA build, and saved outputs in a fresh session before presenting an end-to-end result:
 
@@ -17,16 +69,7 @@ The notebooks document the intended four-phase workflow. They are not proof that
 ---
 
 ## Interactive Demonstration Dashboard
-Open `demo.html` directly in a modern browser for an illustrative UI. Its image-upload path synthesizes a point/splat visualization; it is not a renderer or editor for a trained dynamic 4D-GS checkpoint. Do not present it as a live trained-model result.
-
-The separate `dashboard/` application operates on the static multi-view semantic-labeling pipeline. It is not the dynamic 4D-GS training/editor UI.
-
-The demo includes:
-- **Tab 1**: Real-Time 4D-GS Replay & Multi-View Input Showcase with 360° WebGL Gaussian Orbit.
-- **Tab 2**: Interactive RGB vs 3D Semantic Segmentation Comparison Slider.
-- **Tab 3**: **Interactive 3D Semantic & ARAP Editing Studio** — Recolor parts, delete objects, disassemble 3D limbs, and view SC-GS control anchors in real time (<15 ms).
-- **Tab 4**: Quantitative benchmark comparison tables and per-class IoU breakdown.
-- **Tab 5**: One-click cloud reproducibility links.
+`demo.html` is a static browser presentation with visualizations and an illustrative image-upload splat effect; it is **not** connected to a trained dynamic 4D-GS checkpoint. The separate `dashboard/` app is the locally runnable static semantic segmentation / projection prototype described above. Neither should be presented as live trained-model inference.
 
 ---
 
@@ -111,33 +154,35 @@ python -m pytest tests_integration/ -q
 
 ---
 
-## 🖥️ Running Locally (Linux / NVIDIA GPU)
+## 🖥️ 4D-GS CUDA environment (Linux / NVIDIA GPU)
 
-> ⚠️ **Important**: Custom CUDA kernels require an NVIDIA GPU with CUDA 11.8+. If you clone this repository, you **must use `--recursive`** to clone the rasterizer submodules:
+> ⚠️ This section is only for training the dynamic 4D-GS model. It requires an NVIDIA GPU and a CUDA toolkit compatible with the installed PyTorch build and compiler. The legacy dependencies below are not guaranteed to install on every GPU/driver combination. Do not mix this environment with the SAM 2 extraction dependencies (`preprocess/requirements.txt`), which require newer PyTorch.
 
 ```bash
-# 1. Clone with submodules
-git clone --recursive https://github.com/Jeev1ta/computer_vision.git
-cd computer_vision
+# Clone (if you have not already) and fetch the CUDA submodules
+git clone --recursive https://github.com/Tenisha5132/computer_vision-semantic-4dgs.git
+cd computer_vision-semantic-4dgs
 
-# If you already cloned without --recursive, run:
+# If already cloned without --recursive:
 git submodule update --init --recursive
 
-# 2. Setup Conda environment
+# Create the legacy 4D-GS environment
 conda create -n 4dgs_sem python=3.10 -y
 conda activate 4dgs_sem
 
-# 3. Install PyTorch with CUDA support (e.g. CUDA 11.8 or 12.1)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# Install project dependencies, then restore the matching CUDA-enabled PyTorch wheels
+python -m pip install -r requirements.txt
+python -m pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
 
-# 4. Install CUDA rasterizer & KNN submodules
-pip install -e submodules/depth-diff-gaussian-rasterization
-pip install -e submodules/simple-knn
+# Compile/install the CUDA rasterizer and KNN extensions
+python -m pip install -e submodules/depth-diff-gaussian-rasterization
+python -m pip install -e submodules/simple-knn
 
-# 5. Install dependencies
-pip install -r requirements.txt
-pip install -r preprocess/requirements.txt
+# Optional: install the separate CPU integration/dashboard dependencies
+python -m pip install -r requirements-integration.txt
 ```
+
+Verify the environment before training with `python -c "import torch; print(torch.__version__, torch.cuda.is_available())"`. If CUDA reports `False` or either extension fails to compile, resolve the local PyTorch/driver/CUDA compiler compatibility before proceeding. For semantic extraction, create a separate environment and install `preprocess/requirements.txt` there.
 
 ---
 
