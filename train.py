@@ -459,8 +459,6 @@ if __name__ == "__main__":
     parser.add_argument("--configs", type=str, default = "")
     # Phase 3: Semantic supervision CLI arguments
     parser.add_argument("--enable_semantics", action="store_true", default=False, help="Enable Phase 3 semantic supervision")
-    parser.add_argument("--semantic_feature_dim", type=int, default=0, help="Semantic feature dimension (0 = auto from Phase 2 metadata)")
-    parser.add_argument("--semantic_mode", type=str, default="cross_entropy", choices=["cross_entropy", "cosine", "mse"], help="Semantic loss mode")
     parser.add_argument("--lambda_sem", type=float, default=0.1, help="Semantic loss weight")
     parser.add_argument("--semantic_lr", type=float, default=0.005, help="Semantic feature learning rate")
     
