@@ -114,10 +114,10 @@ except ImportError:
 # Compiles depth-diff-gaussian-rasterization and simple-knn.
 
 print("[CUDA Extensions] Compiling depth-diff-gaussian-rasterization...")
-!pip install -e submodules/depth-diff-gaussian-rasterization
+!pip install --no-build-isolation -e submodules/depth-diff-gaussian-rasterization
 
 print("\n[CUDA Extensions] Compiling simple-knn...")
-!pip install -e submodules/simple-knn
+!pip install --no-build-isolation -e submodules/simple-knn
 
 try:
     import diff_gaussian_rasterization
