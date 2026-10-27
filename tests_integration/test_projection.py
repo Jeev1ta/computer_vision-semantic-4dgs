@@ -58,11 +58,12 @@ def test_project_points_batch_matches_scalar():
         [1.0, 0.0, 2.0],
         [-1.0, -1.0, -1.0],  # behind camera -> should be marked not visible
     ])
-    uv, visible = project_points_batch(xyz, R, t, fx, fy, cx, cy, width=640, height=480)
+    uv, visible, Zc = project_points_batch(xyz, R, t, fx, fy, cx, cy, width=640, height=480)
 
     assert visible.tolist() == [True, True, False]
     assert np.allclose(uv[0], [320.0, 240.0])
     assert np.allclose(uv[1], [320.0 + 250.0, 240.0])
+    assert np.allclose(Zc[:2], [2.0, 2.0])
 
 
 def test_project_points_batch_out_of_bounds():
@@ -72,7 +73,7 @@ def test_project_points_batch_out_of_bounds():
     t = np.zeros(3)
     # A point far to the side will project outside a small image.
     xyz = np.array([[100.0, 0.0, 1.0]])
-    uv, visible = project_points_batch(xyz, R, t, fx, fy, cx, cy, width=640, height=480)
+    uv, visible, Zc = project_points_batch(xyz, R, t, fx, fy, cx, cy, width=640, height=480)
     assert visible[0] == False  # noqa: E712
 
 

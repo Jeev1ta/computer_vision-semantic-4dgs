@@ -36,6 +36,9 @@ def render_predicted_mask(
     object_id: int,
     camera: Camera,
     dilate_px: int = 1,
+    enable_occlusion_culling: bool = True,
+    rel_tol: float = 0.05,
+    abs_tol: float = 0.01,
 ) -> np.ndarray:
     """
     Projects every Gaussian labeled `object_id` into `camera` and rasterizes
@@ -47,10 +50,27 @@ def render_predicted_mask(
     if not obj_mask.any():
         return np.zeros((camera.height, camera.width), dtype=bool)
 
-    uv, visible = projection.project_points_batch(
-        cloud.xyz[obj_mask], camera.R, camera.t,
-        camera.fx, camera.fy, camera.cx, camera.cy, camera.width, camera.height,
-    )
+    if enable_occlusion_culling:
+        # Full-scene depth buffer so foreground surfaces occlude background points
+        all_uv, all_vis, all_Zc = projection.project_points_batch(
+            cloud.xyz, camera.R, camera.t,
+            camera.fx, camera.fy, camera.cx, camera.cy, camera.width, camera.height,
+        )
+        depth_buf = projection.compute_depth_buffer(
+            all_uv, all_Zc, all_vis, camera.width, camera.height
+        )
+        uv = all_uv[obj_mask]
+        vis = all_vis[obj_mask]
+        Zc = all_Zc[obj_mask]
+        visible = projection.filter_occluded(
+            uv, Zc, vis, depth_buf, rel_tol=rel_tol, abs_tol=abs_tol
+        )
+    else:
+        uv, visible, _ = projection.project_points_batch(
+            cloud.xyz[obj_mask], camera.R, camera.t,
+            camera.fx, camera.fy, camera.cx, camera.cy, camera.width, camera.height,
+        )
+
     xs = np.round(uv[visible, 0]).astype(np.int64)
     ys = np.round(uv[visible, 1]).astype(np.int64)
 

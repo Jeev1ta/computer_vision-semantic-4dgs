@@ -113,25 +113,65 @@ def print_benchmark_table(data: Dict):
     print("=" * 78 + "\n")
 
 
+SEMANTIC_COLORS = np.array([
+    [0, 0, 0],        # 0: background
+    [220, 20, 60],    # 1: crimson
+    [0, 191, 255],    # 2: deep sky blue
+    [50, 205, 50],    # 3: lime green
+    [255, 165, 0],    # 4: orange
+    [148, 0, 211],    # 5: dark violet
+    [255, 215, 0],    # 6: gold
+    [0, 250, 154],    # 7: medium spring green
+    [255, 105, 180],  # 8: hot pink
+    [70, 130, 180],   # 9: steel blue
+], dtype=np.uint8)
+
+def _decode_rgb_to_labels(img: np.ndarray) -> np.ndarray:
+    if img.ndim == 2:
+        return img
+    rgb = img[:, :, :3]
+    dists = np.sum((rgb[:, :, None, :] - SEMANTIC_COLORS[None, None, :, :].astype(np.int32)) ** 2, axis=-1)
+    return np.argmin(dists, axis=-1).astype(np.uint8)
+
 def evaluate_folder(model_dir: str, gt_dir: str, class_names: Optional[List[str]] = None) -> Dict:
     """Evaluate renders from an existing training output folder."""
     model_path = Path(model_dir)
     gt_path = Path(gt_dir)
 
-    classes = class_names or DEFAULT_CLASSES
+    classes = class_names
+    if classes is None:
+        for meta_p in [gt_path / "metadata.json", gt_path.parent / "metadata.json"]:
+            if meta_p.is_file():
+                try:
+                    with open(meta_p) as f:
+                        meta = json.load(f)
+                    prompts = meta.get("config", {}).get("text_prompts") or list(meta.get("class_mapping", {}).values())
+                    if prompts:
+                        classes = prompts
+                        break
+                except Exception:
+                    pass
+        if classes is None:
+            classes = DEFAULT_CLASSES
+
     renders_dir = model_path / "renders"
     sem_dir = model_path / "renders_semantics"
 
     if not sem_dir.is_dir():
-        raise FileNotFoundError(f"Semantic render directory not found: {sem_dir}")
+        candidates = sorted(list(model_path.glob("**/renders_semantics")), key=lambda p: str(p))
+        if candidates:
+            sem_dir = candidates[-1]
+        else:
+            raise FileNotFoundError(f"Semantic render directory not found: {sem_dir}")
 
     sem_files = {p.name: p for p in sem_dir.glob("*.png")}
-    gt_files = {p.name: p for p in (gt_path / "labels").glob("*.png")}
+    gt_labels_dir = gt_path / "labels" if (gt_path / "labels").is_dir() else gt_path
+    gt_files = {p.name: p for p in gt_labels_dir.glob("*.png")}
 
     paired_names = sorted(sem_files.keys() & gt_files.keys())
     if not paired_names:
         raise FileNotFoundError(
-            f"No matching PNG filenames between {sem_dir} and {gt_path / 'labels'}"
+            f"No matching PNG filenames between {sem_dir} and {gt_labels_dir}"
         )
 
     pred_maps, gt_maps = [], []
@@ -139,6 +179,10 @@ def evaluate_folder(model_dir: str, gt_dir: str, class_names: Optional[List[str]
     for name in paired_names:
         p_img = np.asarray(Image.open(sem_files[name]))
         g_img = np.asarray(Image.open(gt_files[name]))
+        if p_img.ndim == 3:
+            p_img = _decode_rgb_to_labels(p_img)
+        if g_img.ndim == 3:
+            g_img = _decode_rgb_to_labels(g_img)
         if p_img.ndim != 2 or g_img.ndim != 2:
             raise ValueError(f"Expected single-channel label maps for {name}; got {p_img.shape} and {g_img.shape}")
         if p_img.shape != g_img.shape:

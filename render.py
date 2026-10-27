@@ -91,7 +91,9 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                 sem_images.append(colored_sem)
                 combined = np.concatenate([rgb_8b, colored_sem], axis=1)
                 combined_images.append(combined)
-                Image.fromarray(colored_sem).save(os.path.join(sem_render_path, f"{idx:05d}.png"))
+                # Save both colored visualization and raw 1-channel label map for eval_semantics.py
+                Image.fromarray(colored_sem).save(os.path.join(sem_render_path, f"{idx:05d}_color.png"))
+                Image.fromarray(pred_label.astype(np.uint8), mode="L").save(os.path.join(sem_render_path, f"{idx:05d}.png"))
 
         if name in ["train", "test"]:
             if cam_type != "PanopticSports":

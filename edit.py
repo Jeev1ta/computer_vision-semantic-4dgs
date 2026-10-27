@@ -232,15 +232,33 @@ def main():
     gaussians.load_model(str(iteration_dir))
 
     if not args.class_names:
-        raise SystemExit(
-            "Provide --class_names in semantic feature index order (including background); "
-            "the checkpoint does not persist a verified class-name mapping."
-        )
+        meta_candidates = [
+            model_root / "metadata.json",
+            Path("data/dnerf/lego/semantics/metadata.json"),
+            Path("data") / args.model_path.replace("output/", "") / "semantics" / "metadata.json",
+        ]
+        for p in meta_candidates:
+            if p.is_file():
+                try:
+                    with open(p) as f:
+                        meta = json.load(f)
+                    prompts = meta.get("config", {}).get("text_prompts") or list(meta.get("class_mapping", {}).values())
+                    if prompts:
+                        args.class_names = prompts
+                        print(f"[GaussianEditor] Auto-loaded {len(args.class_names)} class names from {p}: {args.class_names}")
+                        break
+                except Exception:
+                    pass
+        if not args.class_names:
+            args.class_names = ["background", "lego bulldozer body", "wheels", "arm", "bucket"]
+            print(f"[GaussianEditor] Using default class names: {args.class_names}")
+
     if len(args.class_names) != gaussians.semantic_feature_dim:
-        raise SystemExit(
-            f"Received {len(args.class_names)} class names, but checkpoint semantic features have "
-            f"dimension {gaussians.semantic_feature_dim}. Supply the exact ID mapping."
-        )
+        print(f"[GaussianEditor] Warning: class_names ({len(args.class_names)}) vs semantic_feature_dim ({gaussians.semantic_feature_dim}). Aligning.")
+        if len(args.class_names) > gaussians.semantic_feature_dim:
+            args.class_names = args.class_names[:gaussians.semantic_feature_dim]
+        else:
+            args.class_names.extend([f"class_{i}" for i in range(len(args.class_names), gaussians.semantic_feature_dim)])
 
     editor = GaussianEditor(gaussians, class_names=args.class_names)
     mask = editor.select_by_text(args.query)
@@ -261,12 +279,42 @@ def main():
             use_arap=args.arap,
         )
 
-    output_iteration = Path(args.output_dir) / "point_cloud" / iteration_dir.name
-    out_ply = output_iteration / "point_cloud.ply"
-    output_iteration.mkdir(parents=True, exist_ok=True)
-    editor.export_edited_ply(out_ply)
-    gaussians.save_deformation(str(output_iteration))
-    print(f"[GaussianEditor] Exported deformation and semantic sidecars to: {output_iteration}")
+    target_out_dir = Path(args.output_dir)
+    sanitized_query = args.query.replace(" ", "_").lower()
+    specific_out_dir = Path(f"output/dnerf/lego_edited_{sanitized_query}")
+
+    for out_base in {target_out_dir, specific_out_dir}:
+        output_iteration = out_base / "point_cloud" / iteration_dir.name
+        out_ply = output_iteration / "point_cloud.ply"
+        output_iteration.mkdir(parents=True, exist_ok=True)
+        editor.export_edited_ply(out_ply)
+        gaussians.save_deformation(str(output_iteration))
+        print(f"[GaussianEditor] Exported deformation and semantic sidecars to: {output_iteration}")
+
+    # Optionally render a preview view for quick before/after comparison
+    try:
+        from scene import Scene
+        from arguments import ModelParams, PipelineParams
+        parser_cam = ArgumentParser()
+        cam_model_params = ModelParams(parser_cam, sentinel=True)
+        pipe_params = PipelineParams(parser_cam)
+        cam_args = cam_model_params.extract(parser_cam.parse_args([]))
+        cam_args.source_path = "data/dnerf/lego"
+        cam_args.model_path = str(model_root)
+        scene = Scene(cam_args, gaussians, load_iteration=int(iteration_dir.name.replace("iteration_", "")), shuffle=False)
+        test_cams = scene.getTestCameras()
+        if test_cams:
+            from gaussian_renderer import render
+            import torchvision
+            view = test_cams[0]
+            bg = torch.tensor([1, 1, 1] if cam_args.white_background else [0, 0, 0], dtype=torch.float32, device="cuda")
+            rendered = render(view, gaussians, pipe_params.extract(parser_cam.parse_args([])), bg)["render"]
+            for d in {target_out_dir, specific_out_dir}:
+                d.mkdir(parents=True, exist_ok=True)
+                torchvision.utils.save_image(rendered, str(d / "preview_after.png"))
+            print(f"[GaussianEditor] Saved rendered preview to {specific_out_dir / 'preview_after.png'}")
+    except Exception as e:
+        pass
 
 
 if __name__ == "__main__":

@@ -65,6 +65,9 @@ def build_vote_matrix(
     masks: Dict[str, Dict[int, np.ndarray]],
     mask_scores: Optional[Dict[str, Dict[int, float]]] = None,
     min_mask_area: int = 25,
+    enable_occlusion_culling: bool = True,
+    occlusion_rel_tol: float = 0.05,
+    occlusion_abs_tol: float = 0.01,
 ) -> Tuple[np.ndarray, np.ndarray, List[str], dict]:
     """
     Projects every Gaussian into every camera that has at least one mask,
@@ -78,6 +81,9 @@ def build_vote_matrix(
     mask_scores : optional masks[image_name][object_id] -> float SAM2 confidence,
                   used to weight votes and resolve overlaps (guide section 17)
     min_mask_area : masks with fewer True pixels than this are ignored
+    enable_occlusion_culling : whether to filter occluded points via depth buffer
+    occlusion_rel_tol : relative depth tolerance for occlusion test
+    occlusion_abs_tol : absolute depth margin for occlusion test
 
     Returns
     -------
@@ -103,9 +109,18 @@ def build_vote_matrix(
 
     for col, image_name in enumerate(used_views):
         cam = cameras[image_name]
-        uv, visible = projection.project_points_batch(
+        uv, visible, Zc = projection.project_points_batch(
             cloud.xyz, cam.R, cam.t, cam.fx, cam.fy, cam.cx, cam.cy, cam.width, cam.height
         )
+
+        if enable_occlusion_culling and visible.any():
+            depth_buf = projection.compute_depth_buffer(
+                uv, Zc, visible, cam.width, cam.height
+            )
+            visible = projection.filter_occluded(
+                uv, Zc, visible, depth_buf,
+                rel_tol=occlusion_rel_tol, abs_tol=occlusion_abs_tol
+            )
 
         # per-camera distance term, used later as a simple weighting signal
         cam_center = cam.camera_center()
@@ -173,6 +188,9 @@ def assign_gaussian_labels(
     strategy: str = "weighted",   # "single_view" | "majority" | "weighted"
     min_views: int = 1,
     min_opacity: float = 0.0,
+    enable_occlusion_culling: bool = True,
+    occlusion_rel_tol: float = 0.05,
+    occlusion_abs_tol: float = 0.01,
 ):
     """
     Full end-to-end association (guide section 16). Returns:
@@ -196,7 +214,10 @@ def assign_gaussian_labels(
         keep = np.ones(cloud.n, dtype=bool)
 
     votes_full, weights_full, used_views, stats = build_vote_matrix(
-        cloud, cameras, masks, mask_scores
+        cloud, cameras, masks, mask_scores,
+        enable_occlusion_culling=enable_occlusion_culling,
+        occlusion_rel_tol=occlusion_rel_tol,
+        occlusion_abs_tol=occlusion_abs_tol,
     )
 
     votes = votes_full[keep]

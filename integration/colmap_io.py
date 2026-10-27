@@ -40,6 +40,9 @@ _DEFAULT_3DGS_PATH = Path(__file__).resolve().parent.parent / "third_party" / "g
 def _import_official_colmap_loader(gaussian_splatting_repo: Path = _DEFAULT_3DGS_PATH):
     repo = Path(gaussian_splatting_repo)
     loader_file = repo / "scene" / "colmap_loader.py"
+    if not loader_file.exists() and (repo / "gaussian-splatting" / "scene" / "colmap_loader.py").exists():
+        repo = repo / "gaussian-splatting"
+        loader_file = repo / "scene" / "colmap_loader.py"
     if not loader_file.exists():
         raise FileNotFoundError(
             f"Could not find the official COLMAP loader at {loader_file}. "

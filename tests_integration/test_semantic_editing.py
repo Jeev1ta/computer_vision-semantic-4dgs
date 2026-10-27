@@ -3,7 +3,19 @@ import pytest
 from PIL import Image
 
 from eval_semantics import compute_iou, evaluate_folder
-from scene.gaussian_editor import GaussianEditor
+
+try:
+    from scene.gaussian_editor import GaussianEditor
+except (ImportError, ModuleNotFoundError):
+    import importlib.util
+    from pathlib import Path
+    _spec = importlib.util.spec_from_file_location(
+        "scene.gaussian_editor",
+        Path(__file__).resolve().parent.parent / "scene" / "gaussian_editor.py"
+    )
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    GaussianEditor = _mod.GaussianEditor
 
 
 class _NumpySemanticModel:
