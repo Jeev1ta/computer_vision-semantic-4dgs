@@ -119,10 +119,10 @@ except ImportError:
 #   2. simple-knn: Fast nearest-neighbor computation for Gaussian initialization
 
 print("[CUDA Extensions] Compiling submodules/depth-diff-gaussian-rasterization...")
-!pip install --no-build-isolation -e submodules/depth-diff-gaussian-rasterization
+!pip install --no-build-isolation submodules/depth-diff-gaussian-rasterization || (cd submodules/depth-diff-gaussian-rasterization && python setup.py install)
 
 print("\n[CUDA Extensions] Compiling submodules/simple-knn...")
-!pip install --no-build-isolation -e submodules/simple-knn
+!pip install --no-build-isolation submodules/simple-knn || (cd submodules/simple-knn && python setup.py install)
 
 # Verify compiled modules can be imported
 try:
