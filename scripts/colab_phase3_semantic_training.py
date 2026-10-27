@@ -56,7 +56,7 @@ except ImportError:
 # ==============================================================================
 # Clones repository recursively to ensure submodules are present.
 
-REPO_URL = "https://github.com/Tenisha5132/computer_vision-semantic-4dgs.git"
+REPO_URL = "https://github.com/Jeev1ta/computer_vision-semantic-4dgs.git"
 REPO_DIR = "/content/computer_vision-semantic-4dgs"
 
 import os
@@ -80,45 +80,32 @@ if not os.path.exists(os.path.join(REPO_DIR, "submodules/simple-knn/setup.py")):
     print("[Setup] Initializing git submodules...")
     !git submodule update --init --recursive
 
-# %% [Cell 3: Install Legacy PyTorch]
+# %% [Cell 3: Verify PyTorch & CUDA]
 # ==============================================================================
-# Cell 3: Install Legacy PyTorch 1.13.1 + CUDA 11.7
+# Cell 3: Verify PyTorch & CUDA Environment
 # ==============================================================================
-# Custom CUDA rasterizer requires PyTorch 1.13.1 for compilation and execution.
-
-print("[Install] Installing PyTorch 1.13.1 + cu117 wheels...")
-!pip install --no-cache-dir \
-    torch==1.13.1+cu117 \
-    torchvision==0.14.1+cu117 \
-    torchaudio==0.13.1 \
-    --extra-index-url https://download.pytorch.org/whl/cu117
-
 import torch
-print(f"\n✓ Installed PyTorch: {torch.__version__} (CUDA: {torch.version.cuda})")
-assert "1.13.1" in torch.__version__, f"Expected torch 1.13.1, got {torch.__version__}"
-assert torch.cuda.is_available(), "CUDA must be available!"
 
-# %% [Cell 4: Install Dependencies]
+print(f"✓ Active PyTorch version: {torch.__version__}")
+print(f"✓ CUDA Available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"✓ Device: {torch.cuda.get_device_name(0)} (CUDA {torch.version.cuda})")
+assert torch.cuda.is_available(), "❌ A GPU is required! Please select a GPU runtime."
+
+# %% [Cell 4: Install Dependencies & mmengine]
 # ==============================================================================
-# Cell 4: Install Dependencies and MMCV 1.6.0
+# Cell 4: Install Dependencies & mmengine
 # ==============================================================================
-# Installs requirements, re-verifies torch 1.13.1, and installs MMCV 1.6.0.
+print("[Dependencies] Installing requirements...")
+!pip install -q plyfile lpips pytorch_msssim open3d tqdm mmengine
 
-print("[Dependencies] Installing requirements from requirements.txt...")
-!pip install -r requirements.txt
-
-print("\n[Dependencies] Ensuring torch==1.13.1+cu117 remains active...")
-!pip install --no-cache-dir \
-    torch==1.13.1+cu117 \
-    torchvision==0.14.1+cu117 \
-    torchaudio==0.13.1 \
-    --extra-index-url https://download.pytorch.org/whl/cu117
-
-print("\n[Dependencies] Installing MMCV 1.6.0 for cu117/torch1.13...")
-!pip install mmcv==1.6.0 -f https://download.openmmlab.com/mmcv/dist/cu117/torch1.13/index.html
-
-import mmcv
-print(f"✓ MMCV version: {mmcv.__version__}")
+try:
+    from mmengine.config import Config
+    print("✓ mmengine Config parser ready")
+except ImportError:
+    !pip install mmcv
+    import mmcv
+    print(f"✓ mmcv installed: {mmcv.__version__}")
 
 # %% [Cell 5: Compile CUDA Extensions]
 # ==============================================================================
